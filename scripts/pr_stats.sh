@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PR statistics: time open (in review) and comment counts.
 # Usage: ./pr_stats.sh [--state open|closed|all] [--limit N]
-# Requires: GITHUB_TOKEN env var, curl, jq
+# Requires: curl, jq. GITHUB_TOKEN is optional (raises rate limit from 60 to 5000 req/hr).
 
 set -euo pipefail
 
@@ -18,16 +18,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${GITHUB_TOKEN:-}" ]]; then
-  echo "Error: GITHUB_TOKEN is not set." >&2
-  exit 1
-fi
-
 command -v jq >/dev/null 2>&1 || { echo "Error: jq is required." >&2; exit 1; }
 
 API="https://api.github.com"
-AUTH_HEADER="Authorization: Bearer $GITHUB_TOKEN"
 ACCEPT_HEADER="Accept: application/vnd.github+json"
+
+AUTH_ARGS=()
+if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+  AUTH_ARGS=(-H "Authorization: Bearer $GITHUB_TOKEN")
+else
+  echo "Note: GITHUB_TOKEN not set — using unauthenticated requests (60 req/hr limit)."
+fi
 
 per_page=100
 page=1
@@ -37,7 +38,7 @@ echo "Fetching PRs (state=$STATE, limit=$LIMIT) from $OWNER/$REPO ..."
 
 while true; do
   response=$(curl -sf \
-    -H "$AUTH_HEADER" \
+    "${AUTH_ARGS[@]}" \
     -H "$ACCEPT_HEADER" \
     "$API/repos/$OWNER/$REPO/pulls?state=$STATE&per_page=$per_page&page=$page&sort=created&direction=desc")
 
