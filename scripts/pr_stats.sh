@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PR statistics: time open (in review) and comment counts.
-# Usage: ./pr_stats.sh [--state open|closed|all] [--limit N] [--since YYYY-MM-DD]
+# Usage: ./pr_stats.sh [--owner ORG] [--repo NAME] [--state open|closed|all] [--limit N] [--since YYYY-MM-DD]
 # Requires: curl, jq. GITHUB_TOKEN is optional (raises rate limit from 60 to 5000 req/hr).
 
 set -euo pipefail
@@ -13,6 +13,8 @@ SINCE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --owner) OWNER="$2"; shift 2 ;;
+    --repo)  REPO="$2";  shift 2 ;;
     --state) STATE="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
     --since) SINCE="$2"; shift 2 ;;
