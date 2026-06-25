@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-OWNER="rimeissner-ai"
+OWNER="safe-research"
 REPO="safenet"
 STATE="all"
 LIMIT=500
@@ -76,7 +76,7 @@ while true; do
   [[ "${#prs[@]}" -ge "$LIMIT" ]] && break
   [[ "$count" -lt "$per_page" ]] && break
 
-  ((page++))
+  page=$(( page + 1 ))
 done
 
 prs=("${prs[@]:0:$LIMIT}")
@@ -104,8 +104,10 @@ for pr in "${prs[@]}"; do
   state=$(echo "$pr"  | jq -r '.state')
   created=$(echo "$pr" | jq -r '.created_at')
   closed=$(echo "$pr"  | jq -r '.closed_at // empty')
-  comments=$(echo "$pr" | jq -r '.comments // 0')
-  review_comments=$(echo "$pr" | jq -r '.review_comments // 0')
+  pr_detail=$(curl -sf "${AUTH_ARGS[@]}" -H "$ACCEPT_HEADER" \
+    "$API/repos/$OWNER/$REPO/pulls/$number")
+  comments=$(echo "$pr_detail" | jq -r '.comments // 0')
+  review_comments=$(echo "$pr_detail" | jq -r '.review_comments // 0')
   total_comments=$((comments + review_comments))
 
   created_epoch=$(date -u -d "$created" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$created" +%s)
