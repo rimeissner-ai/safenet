@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PR statistics: time open (in review) and comment counts.
-# Usage: ./pr_stats.sh [--state open|closed|all] [--limit N]
+# Usage: ./pr_stats.sh [--state open|closed|all] [--limit N] [--since YYYY-MM-DD]
 # Requires: curl, jq. GITHUB_TOKEN is optional (raises rate limit from 60 to 5000 req/hr).
 
 set -euo pipefail
@@ -8,12 +8,14 @@ set -euo pipefail
 OWNER="rimeissner-ai"
 REPO="safenet"
 STATE="all"
-LIMIT=50
+LIMIT=500
+SINCE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --state) STATE="$2"; shift 2 ;;
     --limit) LIMIT="$2"; shift 2 ;;
+    --since) SINCE="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -34,7 +36,13 @@ per_page=100
 page=1
 prs=()
 
-echo "Fetching PRs (state=$STATE, limit=$LIMIT) from $OWNER/$REPO ..."
+since_epoch=0
+if [[ -n "$SINCE" ]]; then
+  since_epoch=$(date -u -d "$SINCE" +%s 2>/dev/null || date -u -jf "%Y-%m-%d" "$SINCE" +%s)
+  echo "Fetching PRs (state=$STATE, since=$SINCE) from $OWNER/$REPO ..."
+else
+  echo "Fetching PRs (state=$STATE, limit=$LIMIT) from $OWNER/$REPO ..."
+fi
 
 while true; do
   response=$(curl -sf \
@@ -46,7 +54,22 @@ while true; do
   [[ "$count" -eq 0 ]] && break
 
   mapfile -t batch < <(echo "$response" | jq -c '.[]')
-  prs+=("${batch[@]}")
+
+  if [[ "$since_epoch" -gt 0 ]]; then
+    stop_paging=false
+    for item in "${batch[@]}"; do
+      item_created=$(echo "$item" | jq -r '.created_at')
+      item_epoch=$(date -u -d "$item_created" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$item_created" +%s)
+      if [[ "$item_epoch" -ge "$since_epoch" ]]; then
+        prs+=("$item")
+      else
+        stop_paging=true
+      fi
+    done
+    $stop_paging && break
+  else
+    prs+=("${batch[@]}")
+  fi
 
   [[ "${#prs[@]}" -ge "$LIMIT" ]] && break
   [[ "$count" -lt "$per_page" ]] && break
@@ -79,8 +102,8 @@ for pr in "${prs[@]}"; do
   state=$(echo "$pr"  | jq -r '.state')
   created=$(echo "$pr" | jq -r '.created_at')
   closed=$(echo "$pr"  | jq -r '.closed_at // empty')
-  comments=$(echo "$pr" | jq -r '.comments')
-  review_comments=$(echo "$pr" | jq -r '.review_comments')
+  comments=$(echo "$pr" | jq -r '.comments // 0')
+  review_comments=$(echo "$pr" | jq -r '.review_comments // 0')
   total_comments=$((comments + review_comments))
 
   created_epoch=$(date -u -d "$created" +%s 2>/dev/null || date -u -jf "%Y-%m-%dT%H:%M:%SZ" "$created" +%s)
@@ -106,7 +129,7 @@ for pr in "${prs[@]}"; do
 
   sum_hours=$(( sum_hours + diff_hours ))
   sum_comments=$(( sum_comments + total_comments ))
-  ((count_with_duration++))
+  count_with_duration=$(( count_with_duration + 1 ))
 
   # Truncate title
   short_title="${title:0:54}"
